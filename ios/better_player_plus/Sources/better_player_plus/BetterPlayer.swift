@@ -291,8 +291,25 @@ public class BetterPlayer: NSObject, FlutterPlatformView, FlutterStreamHandler, 
                 }
             }
 
-            if player.rate == 0 && CMTimeCompare(player.currentItem?.currentTime() ?? .zero, .zero) == 1 && (player.currentItem?.duration ?? .zero).isValid && CMTimeCompare(player.currentItem?.currentTime() ?? .zero, player.currentItem?.duration ?? .zero) == -1 && isPlaying {
-                handleStalled()
+            // currentTime()/duration normally return fast, but both can block on an IPC round trip
+            // to mediaserverd (CMSync/timebase resolution) under memory pressure or a busy media
+            // server. KVO delivery of `rate` runs on the main thread, so a slow round trip here
+            // showed up as a main-thread App Hang. AVFoundation documents these accessors as safe
+            // to call from any thread, so do the check on a background queue and only hop back to
+            // main to call handleStalled(), which needs a run loop for its perform(afterDelay:).
+            if player.rate == 0 && isPlaying {
+                let currentItem = player.currentItem
+                DispatchQueue.global(qos: .utility).async { [weak self] in
+                    guard let self = self, let currentItem = currentItem else { return }
+                    let currentTime = currentItem.currentTime()
+                    let duration = currentItem.duration
+                    guard CMTimeCompare(currentTime, .zero) == 1,
+                          duration.isValid,
+                          CMTimeCompare(currentTime, duration) == -1 else { return }
+                    DispatchQueue.main.async {
+                        self.handleStalled()
+                    }
+                }
             }
         }
 
@@ -568,13 +585,27 @@ public class BetterPlayer: NSObject, FlutterPlatformView, FlutterStreamHandler, 
 
     // MARK: - Audio & Tracks
     public func setAudioTrack(name: String, index: Int) {
-        guard let group = player.currentItem?.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else { return }
-        let options = group.options
-        for audioTrackIndex in 0..<options.count {
-            let option = options[audioTrackIndex]
-            let metas = AVMetadataItem.metadataItems(from: option.commonMetadata, withKey: "title" as (NSCopying & NSObjectProtocol), keySpace: AVMetadataKeySpace(rawValue: "comn"))
-            if let title = metas.first?.stringValue, title == name && audioTrackIndex == index {
-                player.currentItem?.select(option, in: group)
+        // `mediaSelectionGroup(forMediaCharacteristic:)` blocks synchronously until the asset's
+        // media-selection info is loaded (network round trip for remote/HLS assets), and this is
+        // called on the main thread via the platform channel — load the key asynchronously first
+        // per AVAsset's documented contract, matching the loadValuesAsynchronously usage above for
+        // preferredTransform.
+        guard let asset = player.currentItem?.asset else { return }
+        let key = "availableMediaCharacteristicsWithMediaSelectionOptions"
+        asset.loadValuesAsynchronously(forKeys: [key]) { [weak self] in
+            guard let self = self, !self.disposed else { return }
+            guard asset.statusOfValue(forKey: key, error: nil) == .loaded,
+                  let group = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else { return }
+            DispatchQueue.main.async {
+                guard self.player.currentItem?.asset === asset else { return }
+                let options = group.options
+                for audioTrackIndex in 0..<options.count {
+                    let option = options[audioTrackIndex]
+                    let metas = AVMetadataItem.metadataItems(from: option.commonMetadata, withKey: "title" as (NSCopying & NSObjectProtocol), keySpace: AVMetadataKeySpace(rawValue: "comn"))
+                    if let title = metas.first?.stringValue, title == name && audioTrackIndex == index {
+                        self.player.currentItem?.select(option, in: group)
+                    }
+                }
             }
         }
     }
