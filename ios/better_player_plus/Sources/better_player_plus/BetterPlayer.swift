@@ -610,6 +610,49 @@ public class BetterPlayer: NSObject, FlutterPlatformView, FlutterStreamHandler, 
         }
     }
 
+    /// Selects the audio track whose language matches the first entry of
+    /// `languages` that the asset actually carries. Unlike `setAudioTrack`
+    /// (title match on an HLS rendition list parsed in Dart) this works for
+    /// every source AVFoundation can enumerate — HLS renditions *and* the
+    /// audio tracks muxed into a downloaded mp4, where no rendition list
+    /// exists and AVPlayer otherwise falls back to the device's system
+    /// language.
+    public func setAudioTrackLanguages(_ languages: [String]) {
+        guard let asset = player.currentItem?.asset else { return }
+        let key = "availableMediaCharacteristicsWithMediaSelectionOptions"
+        asset.loadValuesAsynchronously(forKeys: [key]) { [weak self] in
+            guard let self = self, !self.disposed else { return }
+            guard asset.statusOfValue(forKey: key, error: nil) == .loaded else { return }
+            DispatchQueue.main.async {
+                guard self.player.currentItem?.asset === asset,
+                      let group = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else { return }
+                for language in languages {
+                    let needle = BetterPlayer.normalizedLanguageCode(language)
+                    if let option = group.options.first(where: {
+                        BetterPlayer.normalizedLanguageCode(BetterPlayer.languageTag(of: $0)) == needle
+                    }) {
+                        self.player.currentItem?.select(option, in: group)
+                        return
+                    }
+                }
+            }
+        }
+    }
+
+    private static func languageTag(of option: AVMediaSelectionOption) -> String? {
+        option.locale?.languageCode ?? option.extendedLanguageTag
+    }
+
+    /// `ru` for every spelling of Russian the two sides use: HLS renditions
+    /// carry ISO 639-1 (`ru`), the mp4 track metadata the backend writes
+    /// carries ISO 639-2/T (`rus`), and either may arrive with a region
+    /// suffix (`pt-BR`).
+    private static func normalizedLanguageCode(_ code: String?) -> String? {
+        guard let code = code, !code.isEmpty else { return nil }
+        let base = code.split(whereSeparator: { $0 == "-" || $0 == "_" }).first.map(String.init) ?? code
+        return Locale(identifier: base).languageCode?.lowercased() ?? base.lowercased()
+    }
+
     public func setMixWithOthers(_ mixWithOthers: Bool) {
         if mixWithOthers {
             try? AVAudioSession.sharedInstance().setCategory(.playback, options: [.mixWithOthers])

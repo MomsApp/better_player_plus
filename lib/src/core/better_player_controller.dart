@@ -1143,6 +1143,18 @@ class BetterPlayerController {
     videoPlayerController!.setAudioTrack(audioTrack.label, audioTrack.id);
   }
 
+  ///Ask the native player to prefer the first language in [languages] the
+  ///media actually carries. Unlike [setAudioTrack] this needs no rendition
+  ///list, so it also covers progressive sources (a downloaded mp4 with
+  ///several audio tracks), where the platform otherwise picks by the device
+  ///language.
+  void setAudioTrackLanguages(List<String> languages) {
+    if (videoPlayerController == null) {
+      throw StateError('The data source has not been initialized');
+    }
+    videoPlayerController!.setAudioTrackLanguages(languages);
+  }
+
   ///Enable or disable audio mixing with other sound within device.
   void setMixWithOthers(bool mixWithOthers) {
     if (videoPlayerController == null) {

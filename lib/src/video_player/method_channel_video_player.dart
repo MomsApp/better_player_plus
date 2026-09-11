@@ -181,6 +181,12 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
   );
 
   @override
+  Future<void> setAudioTrackLanguages(int? textureId, List<String> languages) => _channel.invokeMethod<void>(
+    'setAudioTrackLanguages',
+    <String, dynamic>{'textureId': textureId, 'languages': languages},
+  );
+
+  @override
   Future<void> setMixWithOthers(int? textureId, bool mixWithOthers) => _channel.invokeMethod<void>(
     'setMixWithOthers',
     <String, dynamic>{'textureId': textureId, 'mixWithOthers': mixWithOthers},

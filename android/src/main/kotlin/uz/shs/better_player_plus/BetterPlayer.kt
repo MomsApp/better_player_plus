@@ -660,6 +660,19 @@ internal class BetterPlayer(
         mediaSession = null
     }
 
+    /// Picks the audio track whose language matches the first entry of
+    /// [languages] the media actually carries. Works for every source
+    /// ExoPlayer can see — HLS renditions and the tracks muxed into a
+    /// downloaded mp4 alike — instead of the label match [setAudioTrack]
+    /// needs, and without it ExoPlayer falls back to the device language.
+    fun setAudioTrackLanguages(languages: List<String>) {
+        if (languages.isEmpty()) return
+        trackSelector.setParameters(
+            trackSelector.buildUponParameters()
+                .setPreferredAudioLanguages(*languages.toTypedArray())
+        )
+    }
+
     fun setAudioTrack(name: String, index: Int) {
         try {
             val mappedTrackInfo = trackSelector.currentMappedTrackInfo

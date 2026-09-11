@@ -305,6 +305,10 @@ extension BetterPlayerPlugin {
             let index = (argsMap["index"] as? NSNumber)?.intValue ?? 0
             player.setAudioTrack(name: name, index: index)
             result(nil)
+        case "setAudioTrackLanguages":
+            let languages = argsMap["languages"] as? [String] ?? []
+            player.setAudioTrackLanguages(languages)
+            result(nil)
         case "setMixWithOthers":
             let mix = (argsMap["mixWithOthers"] as? NSNumber)?.boolValue ?? false
             player.setMixWithOthers(mix)
