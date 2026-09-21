@@ -603,11 +603,25 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   }
 
   void setAudioTrack(String? name, int? index) {
-    _videoPlayerPlatform.setAudioTrack(_textureId, name, index);
+    if (_isDisposed) {
+      return;
+    }
+    _ignoreGonePlayer(_videoPlayerPlatform.setAudioTrack(_textureId, name, index));
   }
 
   void setAudioTrackLanguages(List<String> languages) {
-    _videoPlayerPlatform.setAudioTrackLanguages(_textureId, languages);
+    if (_isDisposed) {
+      return;
+    }
+    _ignoreGonePlayer(_videoPlayerPlatform.setAudioTrackLanguages(_textureId, languages));
+  }
+
+  // Fire-and-forget calls can land after the native player is torn down (the
+  // HLS manifest parse finishes after the screen closed): the plugin then
+  // answers FlutterMethodNotImplemented, and the unawaited future used to
+  // crash the app as an uncaught MissingPluginException.
+  void _ignoreGonePlayer(Future<void> call) {
+    call.catchError((Object _) {}, test: (e) => e is MissingPluginException || e is PlatformException);
   }
 
   void setMixWithOthers(bool mixWithOthers) {
